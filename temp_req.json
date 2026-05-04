@@ -1,0 +1,17 @@
+{
+    "strategy": "hybrid",
+    "n_recommendations": 5,
+    "user": {
+        "id": 10,
+        "fullname": "Noa RISPAL",
+        "hourly_rate": 40,
+        "subject": "Computer Science",
+        "level": "undergraduate",
+        "preferred_learning_mode": "Online",
+        "special_needs": "None",
+        "location": "",
+        "email": "noa.rispal@mail.com",
+        "gpa": 3.7,
+        "query": "I need help with Machine Learning, specifically neural networks and Python."
+    }
+}

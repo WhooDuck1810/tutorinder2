@@ -1,0 +1,126 @@
+url = localhost:5000 (BACKEND)
+
+GET url/ - > DIRECT TO DASHBOARD  
+GET url/ - > DIRECT TO LOGIN IF NOT LOGIN YET 
+GET url/profile
+get url/dashboard 
+get url/profile 
+get url/dashboard?tab=matches 
+
+
+GET TUTOR FROM KNN BACKEND 
+GET localhost:5000/api/recommendations/tutors 
+
+
+====================================================
+TỔNG HỢP CÁC MODEL VÀ LINK GỬI VỀ SUPABASE
+====================================================
+
+1. CÁC MODEL (BẢNG TRONG SUPABASE - types/database.ts)
+----------------------------------------------------
+- profiles: Lưu thông tin người dùng (id, role, full_name, avatar_url, bio, subjects, learning_mode, max_budget, hourly_rate, ...)
+- matches: Lưu trạng thái kết nối học sinh - giáo viên (id, student_id, teacher_id, status, created_at)
+- messages: Lưu tin nhắn chat giữa 2 người (id, match_id, sender_id, content, created_at)
+- bookings: Lưu thông tin đặt lịch học/meet (id, match_id, scheduled_time, mock_meet_link, status, created_at)
+
+2. CÁC ĐƯỜNG LINK / ENDPOINT GỌI VỀ SUPABASE (THAO TÁC DATA)
+----------------------------------------------------
+[ AUTHENTICATION & PROFILES ] - stores/authStore.ts
+- Đăng nhập: supabase.auth.signInWithPassword({ email, password })
+- Đăng ký: supabase.auth.signUp({ email, password, options: { data: { full_name, role } } })
+- Đăng xuất: supabase.auth.signOut()
+- Lấy Session: supabase.auth.getSession() & lắng nghe onAuthStateChange()
+- Lấy thông tin Profile: supabase.from('profiles').select('*').eq('id', userId)
+
+[ MATCHING & DASHBOARD ] - app/dashboard/page.tsx
+- Lấy danh sách giáo viên: supabase.from('profiles').select('*').eq('role', 'teacher')
+- Lấy danh sách Matches của học sinh: supabase.from('matches').select('*, teacher:teacher_id(*)').eq('student_id', profile.id)
+- Lấy danh sách Yêu cầu (Requests) cho giáo viên: supabase.from('matches').select('*, student:student_id(*)').eq('teacher_id', profile.id)
+- Tạo yêu cầu kết nối (Match Request): supabase.from('matches').insert({ student_id, teacher_id, status: 'pending' })
+- Cập nhật trạng thái Match (Accept/Reject): supabase.from('matches').update({ status }).eq('id', match.id) -> ở components/MatchRequestCard.tsx
+
+[ CHAT & MESSAGES ] - stores/chatStore.ts
+- Lấy lịch sử tin nhắn: supabase.from('messages').select('*').eq('match_id', matchId).order('created_at').limit(100)
+- Gửi tin nhắn mới: supabase.from('messages').insert({ match_id, sender_id, content })
+- Realtime nhận tin nhắn: supabase.channel('chat:...').on('postgres_changes', { event: 'INSERT', table: 'messages' }).subscribe()
+
+[ CALENDAR & BOOKING ] - app/api/calendar/book.ts (Server Action)
+- Xác thực user hiện tại: supabase.auth.getUser()
+- Kiểm tra tính hợp lệ của match: supabase.from('matches').select('id, student_id, teacher_id, status').eq('id', matchId).single()
+- Lưu thông tin đặt lịch học (Booking): supabase.from('bookings').insert({ match_id, scheduled_time, mock_meet_link, status: 'confirmed' })
+
+====================================================
+RECOMMENDATION API NOTES (AI MATCHING)
+====================================================
+
+1. KẾT QUẢ TRẢ VỀ TỪ API TÌM KIẾM (TOP 5 TUTORS)
+----------------------------------------------------
+- Trả về danh sách 5 tutor với các trường: id, fullname, email, hourly_rate, subject, level, precise_domain, preferred_learning_mode, special_needs, location, bio.
+
+2. CÁC THÔNG TIN CẦN THÊM HOẶC MAP TRÊN FRONTEND / MATCHING
+----------------------------------------------------
+- Mapping tên trường (Field mapping):
+  + API trả về `fullname`, Supabase dùng `full_name`.
+  + API trả về `subject`, Supabase dùng `subjects` (mảng hoặc chuỗi).
+  + API trả về `preferred_learning_mode`, Supabase dùng `learning_mode`.
+- Các trường cần thêm/hiển thị trên Frontend (Teacher Profile & Match Cards):
+  + `precise_domain`: Lĩnh vực chuyên sâu (ví dụ: Artificial Intelligence, Data Engineering).
+  + `level`: Cấp bậc học vấn (ví dụ: undergraduate, graduate).
+  + `special_needs`: Các nhu cầu đặc biệt có thể hỗ trợ (ví dụ: ADHD, Dyslexia, Autism).
+  + `location`: Địa điểm (ví dụ: Vietnam, HCMC, District 10) để hiển thị nếu học Offline.
+- Logic Matching Frontend:
+  + Cần cập nhật interface/type `Teacher` hoặc `Profile` trên UI để chứa các trường mới này nhận từ AI Backend.
+  + Giao diện thẻ tutor (Tutor Card) cần có thêm badges/icons cho: `precise_domain`, `special_needs` và `location`.
+
+
+
+
+  the current supabase data is something like this : 
+GET https://jaueqsyusdrzammjwfen.supabase.co/rest/v1/profiles?role=eq.teacher&select=*
+
+[
+    {
+        "id": "b2c4dd67-8b61-483a-a402-f898e5fce930",
+        "role": "teacher",
+        "full_name": "Alice Nguyen",
+        "avatar_url": null,
+        "bio": " Researcher working on CNN, backpropagation, Adam optimizer with focus on computer vision systems ",
+        "subjects": [
+            "Computer Science"
+        ],
+        "hourly_rate": 45.00,
+        "timezone": "UTC",
+        "created_at": "2026-05-04T03:32:37.300919+00:00",
+        "updated_at": "2026-05-04T03:32:37.300919+00:00",
+        "learning_mode": "online",
+        "location": "Vietnam, HCMC, Binh Thanh District",
+        "special_needs": [],
+        "max_budget": null,
+        "gpa_per_subject": {},
+        "min_gpa_per_subject": {},
+        "years_experience": null,
+        "certifications": null
+    },
+    {
+        "id": "4023215d-5748-4496-af6d-064dc95fc879",
+        "role": "teacher",
+        "full_name": "Bao Tran",
+        "avatar_url": null,
+        "bio": " Fullstack engineer skilled in React, Node.js, REST API design and scalable microservices ",
+        "subjects": [
+            "Computer Science"
+        ],
+        "hourly_rate": 40.00,
+        "timezone": "UTC",
+        "created_at": "2026-05-04T03:32:37.300919+00:00",
+        "updated_at": "2026-05-04T03:32:37.300919+00:00",
+        "learning_mode": "online",
+        "location": "Vietnam, HCMC, District 7",
+        "special_needs": [],
+        "max_budget": null,
+        "gpa_per_subject": {},
+        "min_gpa_per_subject": {},
+        "years_experience": null,
+        "certifications": null
+    }
+]

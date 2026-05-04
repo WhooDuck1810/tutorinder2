@@ -29,9 +29,58 @@ export default function DashboardPage() {
   const supabase = createClient()
 
   const loadTeachers = useCallback(async () => {
-    const { data } = await supabase.from('profiles').select('*').eq('role', 'teacher')
-    setTeachers(data ?? [])
-  }, [])
+    if (!profile) return
+    try {
+      // The AI backend strictly requires an integer ID, but Supabase uses UUID strings.
+      // We convert the first 8 hex characters of the UUID to an integer.
+      const integerId = parseInt(profile.id.replace(/-/g, '').substring(0, 8), 16);
+
+      const body = {
+        strategy: "hybrid",
+        n_recommendations: 5,
+        user: {
+          id: integerId,
+          fullname: profile.full_name,
+          hourly_rate: profile.max_budget ?? 40,
+          subject: profile.subjects?.[0] || "Computer Science", // Must not be null
+          level: "undergraduate",
+          preferred_learning_mode: profile.learning_mode === 'both' ? 'Both' : profile.learning_mode === 'online' ? 'Online' : 'Offline',
+          special_needs: profile.special_needs?.length ? profile.special_needs.join(", ") : "None",
+          location: profile.location || "",
+          email: "student@mail.com",
+          gpa: 3.7,
+          query: "I need help with my studies."
+        }
+      }
+
+      // Call our Next.js API route instead of the Python backend directly to avoid CORS
+      const res = await fetch(`/api/recommendations/tutors`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        const mappedTeachers = (data.recommendations ?? []).map((t: any) => ({
+          ...t,
+          id: String(t.id),
+          role: 'teacher',
+          full_name: t.fullname,
+          subjects: [t.subject],
+          learning_mode: t.preferred_learning_mode?.toLowerCase() === 'offline' ? 'offline' : (t.preferred_learning_mode?.toLowerCase() === 'online' ? 'online' : 'both'),
+          special_needs: t.special_needs && t.special_needs !== "None" ? t.special_needs.split(',').map((s: string) => s.trim()) : []
+        })) as Profile[]
+        setTeachers(mappedTeachers)
+      } else {
+        console.error('Failed to fetch tutors from backend')
+        setTeachers([])
+      }
+    } catch (error) {
+      console.error('Error fetching tutors:', error)
+      setTeachers([])
+    }
+  }, [profile])
 
   const loadMyMatches = useCallback(async () => {
     if (!profile) return
@@ -148,18 +197,18 @@ export default function DashboardPage() {
             {tab === 'matches' && (
               <div className="space-y-3 fade-up-2">
                 {isLoading ? [...Array(3)].map((_, i) => <div key={i} className="card h-20 animate-pulse" style={{ background: 'rgba(30,45,66,0.5)' }} />)
-                : myMatches.length === 0 ? <div className="text-center py-16 text-muted"><p className="text-4xl mb-3">📭</p><p className="text-sm">No matches yet.</p></div>
-                : myMatches.map((match) => (
-                    <div key={match.id} className="card flex items-center gap-4">
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-white">{(match.teacher as Profile).full_name}</p>
-                        <div className="flex gap-2 mt-1 flex-wrap"><span className={`badge-${match.status}`}>{match.status}</span></div>
+                  : myMatches.length === 0 ? <div className="text-center py-16 text-muted"><p className="text-4xl mb-3">📭</p><p className="text-sm">No matches yet.</p></div>
+                    : myMatches.map((match) => (
+                      <div key={match.id} className="card flex items-center gap-4">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-white">{(match.teacher as Profile).full_name}</p>
+                          <div className="flex gap-2 mt-1 flex-wrap"><span className={`badge-${match.status}`}>{match.status}</span></div>
+                        </div>
+                        {match.status === 'accepted' && (
+                          <div className="flex gap-2"><Link href={`/chat/${match.id}`} className="btn-primary text-xs px-3 py-1.5">Chat</Link><Link href={`/book/${match.id}`} className="btn-ghost text-xs px-3 py-1.5">Book</Link></div>
+                        )}
                       </div>
-                      {match.status === 'accepted' && (
-                        <div className="flex gap-2"><Link href={`/chat/${match.id}`} className="btn-primary text-xs px-3 py-1.5">Chat</Link><Link href={`/book/${match.id}`} className="btn-ghost text-xs px-3 py-1.5">Book</Link></div>
-                      )}
-                    </div>
-                  ))}
+                    ))}
               </div>
             )}
           </>
@@ -169,10 +218,10 @@ export default function DashboardPage() {
         {profile?.role === 'teacher' && (
           <div className="space-y-3 fade-up-2">
             {isLoading ? [...Array(4)].map((_, i) => <div key={i} className="card h-20 animate-pulse" style={{ background: 'rgba(30,45,66,0.5)' }} />)
-            : sortedRequests.length === 0 ? <div className="text-center py-16 text-muted"><p className="text-4xl mb-3">📬</p><p className="text-sm">No requests yet.</p></div>
-            : sortedRequests.map(({ req, matchResult }) => (
-                <MatchRequestCard key={req.id} match={req} matchResult={matchResult} onStatusChange={loadRequests} />
-              ))}
+              : sortedRequests.length === 0 ? <div className="text-center py-16 text-muted"><p className="text-4xl mb-3">📬</p><p className="text-sm">No requests yet.</p></div>
+                : sortedRequests.map(({ req, matchResult }) => (
+                  <MatchRequestCard key={req.id} match={req} matchResult={matchResult} onStatusChange={loadRequests} />
+                ))}
           </div>
         )}
       </main>
