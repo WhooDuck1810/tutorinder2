@@ -33,19 +33,19 @@ export default function DashboardPage() {
     try {
       // The AI backend strictly requires an integer ID, but Supabase uses UUID strings.
       // We convert the first 8 hex characters of the UUID to an integer.
-      const integerId = parseInt(profile.id.replace(/-/g, '').substring(0, 8), 16);
+      const integerId = parseInt(profile.id.replace(/-/g, '').substring(0, 8), 16) || 12345;
 
       const body = {
-        strategy: "hybrid",
-        n_recommendations: 5,
+        strategy: "content_based",
+        n_recommendations: 70,
         user: {
-          id: integerId,
+          id: String(profile.id),
           fullname: profile.full_name,
           hourly_rate: profile.max_budget ?? 40,
           subject: profile.subjects?.[0] || "Computer Science", // Must not be null
           level: "undergraduate",
-          preferred_learning_mode: profile.learning_mode === 'both' ? 'Both' : profile.learning_mode === 'online' ? 'Online' : 'Offline',
-          special_needs: profile.special_needs?.length ? profile.special_needs.join(", ") : "None",
+          learning_mode: profile.learning_mode,
+          special_needs: profile.special_needs?.length ? profile.special_needs : [],
           location: profile.location || "",
           email: "student@mail.com",
           gpa: 3.7,
@@ -68,8 +68,8 @@ export default function DashboardPage() {
           role: 'teacher',
           full_name: t.fullname,
           subjects: [t.subject],
-          learning_mode: t.preferred_learning_mode?.toLowerCase() === 'offline' ? 'offline' : (t.preferred_learning_mode?.toLowerCase() === 'online' ? 'online' : 'both'),
-          special_needs: t.special_needs && t.special_needs !== "None" ? t.special_needs.split(',').map((s: string) => s.trim()) : []
+          learning_mode: t.learning_mode ?? 'online',
+          special_needs: t.special_needs ?? []
         })) as Profile[]
         setTeachers(mappedTeachers)
       } else {
@@ -84,13 +84,15 @@ export default function DashboardPage() {
 
   const loadMyMatches = useCallback(async () => {
     if (!profile) return
-    const { data } = await supabase.from('matches').select('*, teacher:teacher_id(*)').eq('student_id', profile.id)
+    // Temporarily removing the join syntax to see if it fixes the 400 Bad Request
+    const { data } = await supabase.from('matches').select('*').eq('student_id', profile.id)
     setMyMatches((data as MatchWithTeacher[]) ?? [])
   }, [profile])
 
   const loadRequests = useCallback(async () => {
     if (!profile) return
-    const { data } = await supabase.from('matches').select('*, student:student_id(*)').eq('teacher_id', profile.id)
+    // Temporarily removing the join syntax to see if it fixes the 400 Bad Request
+    const { data } = await supabase.from('matches').select('*').eq('teacher_id', profile.id)
     setRequests((data as MatchWithStudent[]) ?? [])
   }, [profile])
 
