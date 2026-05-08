@@ -1,0 +1,106 @@
+# Project Overview: Tutorinder (v2)
+Tutorinder is a matching platform designed to connect students with the ideal tutors. It uses a sophisticated matching engine and a recommendation system (AI-backed) to suggest tutors based on subjects, budget, GPA requirements, learning modes, and special needs. The app facilitates the entire tutoring lifecycle: discovery, matching, real-time communication, and session booking.
+
+# Technology Stack
+- **Framework:** Next.js 16 (App Router) with React 19.
+- **Language:** TypeScript.
+- **Backend-as-a-Service:** Supabase (Authentication, PostgreSQL Database, Real-time subscriptions, SSR support).
+- **State Management:** Zustand (Stores for Auth and Chat).
+- **Styling:** Tailwind CSS 4 (with modern CSS variables and a "glassmorphism" aesthetic).
+- **Forms & Validation:** React Hook Form with Zod (Zod handles schema validation for profiles and API requests).
+- **Utility Libraries:** `date-fns` for date formatting.
+- **Deployment:** Optimized for Vercel.
+
+# Architecture Overview
+The application follows a modern Next.js App Router architecture:
+- **Client/Server Separation:** Utilizes Server Components for data fetching/initial rendering and Client Components for interactive UI (Dashboard, Chat, Profile).
+- **Modular Logic:** Core matching logic and Supabase clients are centralized in `lib/`.
+- **State Layer:** Zustand stores manage global application state, reducing the need for complex prop drilling.
+- **API Proxying:** Includes a route handler to proxy requests to an external recommendation backend (AI strategy), bypassing CORS issues.
+- **Real-time Engine:** Uses Supabase Realtime for instant messaging updates.
+
+# Key Features
+1. **Dual Role Support:** Users can sign up and operate as either a "Student" or a "Teacher" with tailored interfaces.
+2. **Smart Matching Engine:** A scoring system (0-100) that evaluates compatibility based on:
+    - Subject Overlap (30 pts)
+    - Learning Mode (Online/Offline/Both) (20 pts)
+    - Budget vs. Hourly Rate (25 pts)
+    - GPA Requirements (per subject) (25 pts)
+    - Special Needs Support (Bonus +10 pts)
+3. **AI Recommendations:** Integration with an external recommendation API for "Discover" mode.
+4. **Real-time Chat:** Messaging system for matched pairs with auto-scrolling and typing feedback.
+5. **Session Booking:** Integrated scheduling tool that generates mock Google Meet links and tracks past sessions.
+6. **Detailed Profile Management:** Rich profile editing including subject tagging (multi-select), GPA mapping, and special needs selection.
+
+# API Endpoints & Data Handling
+
+## Backend Integration (Python AI Backend)
+The frontend communicates with a Python-based recommendation backend (typically running on `localhost:5000`) through a Next.js proxy to avoid CORS issues.
+
+- **Endpoint:** `POST /api/recommendations/tutors`
+  - **Proxy Route:** `app/api/recommendations/tutors/route.ts`
+  - **Backend URL:** `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5000'}/api/recommendations/tutors`
+  - **Frontend Caller:** `loadTeachers` function in `app/dashboard/page.tsx`.
+  - **Payload:** Student profile details (ID, subjects, GPA, requirements).
+  - **Data Handling:**
+    - The raw response (`recommendations` array) is mapped to the internal `Profile` interface.
+    - Fields like `fullname` are mapped to `full_name`, and default values are assigned to `learning_mode` and `special_needs` if missing.
+    - The mapped data is stored in the `teachers` state and then processed by the `calculateMatch` utility to generate compatibility scores (0-100) and identify "blockers" before display.
+
+## Server Actions
+- **`bookSession` (app/api/calendar/book.ts):**
+  - **Caller:** `app/book/[matchId]/page.tsx`.
+  - **Purpose:** Handles the creation of tutoring sessions, validates inputs (match existence, date), and inserts records into the `bookings` table.
+
+## Supabase Data Fetching (Direct)
+The application fetches most of its operational data directly from Supabase via the client-side and server-side SDKs:
+- **Authentication & Profiles:** Managed in `authStore.ts` (`fetchProfile` method). Loads and caches the current user's role and preferences.
+- **Matches & Requests:** Fetched in `dashboard/page.tsx` using `.from('matches').select('*, teacher:teacher_id(*)')` or similar joins.
+- **Real-time Chat:** `chatStore.ts` manages message history and real-time subscriptions using Supabase's `subscribe()` on the `messages` table.
+
+# Directory Breakdown
+
+## Root Directory
+- `AGENTS.md`: Custom instructions for AI agents regarding Next.js conventions.
+- `CLAUDE.md`: Implementation notes/guidelines.
+- `package.json`: Project dependencies and scripts.
+- `all_teachers.json`: Large dataset of mock teacher profiles for testing/seeding.
+- `proxy.ts`: Likely a utility for the API proxy.
+- `vercel.json`: Deployment configuration.
+
+## /app (Next.js Pages & API)
+- `(auth)/`: Grouped routes for `login` and `signup`.
+- `api/`:
+    - `calendar/book.ts`: Server Action for booking tutoring sessions (validates, simulates delay, inserts to DB).
+    - `recommendations/tutors/route.ts`: Proxy route for fetching tutor recommendations from the AI backend.
+- `book/[matchId]/`: Interface for scheduling a session.
+- `chat/[matchId]/`: Real-time chat interface.
+- `dashboard/`: The main hub. Features "Discover" and "Matches" tabs for students, and "Requests" for teachers.
+- `profile/`: Detailed profile editor with role-specific fields.
+- `layout.tsx`: Root layout with font and global styles.
+- `page.tsx`: Root entry point (redirects to dashboard or login).
+
+## /components (UI)
+- `ChatBubble.tsx`: Styled message component for the chat.
+- `MatchRequestCard.tsx`: For teachers to accept/decline student requests.
+- `Navbar.tsx`: Global navigation with user profile and sign-out.
+- `TeacherCard.tsx`: Display card for tutors in the discovery view, showing match score and compatibility reasons.
+- `ui/`: Shared UI primitives like `SubjectTagInput`.
+
+## /lib (Core Logic)
+- `matching.ts`: The primary matching algorithm and scoring constants.
+- `supabase/`:
+    - `AuthProvider.tsx`: Context provider for auth initialization.
+    - `client.ts`: Browser-side Supabase client.
+    - `server.ts`: Server-side Supabase client (using `@supabase/ssr`).
+    - `middleware.ts`: Auth protection and session refresh logic.
+
+## /stores (Zustand)
+- `authStore.ts`: Manages user session, profile data, and auth actions (signIn, signUp, signOut).
+- `chatStore.ts`: Handles message loading, real-time subscriptions, and sending messages.
+
+## /types
+- `database.ts`: TypeScript interfaces reflecting the Supabase schema (profiles, matches, messages, bookings).
+
+## /public
+- Static assets (SVG icons).

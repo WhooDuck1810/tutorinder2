@@ -37,7 +37,7 @@ export default function DashboardPage() {
 
       const body = {
         strategy: "content_based",
-        n_recommendations: 70,
+        n_recommendations: 207,
         user: {
           id: String(profile.id),
           fullname: profile.full_name,
@@ -84,15 +84,13 @@ export default function DashboardPage() {
 
   const loadMyMatches = useCallback(async () => {
     if (!profile) return
-    // Temporarily removing the join syntax to see if it fixes the 400 Bad Request
-    const { data } = await supabase.from('matches').select('*').eq('student_id', profile.id)
+    const { data } = await supabase.from('matches').select('*, teacher:teacher_id(*)').eq('student_id', profile.id)
     setMyMatches((data as MatchWithTeacher[]) ?? [])
   }, [profile])
 
   const loadRequests = useCallback(async () => {
     if (!profile) return
-    // Temporarily removing the join syntax to see if it fixes the 400 Bad Request
-    const { data } = await supabase.from('matches').select('*').eq('teacher_id', profile.id)
+    const { data } = await supabase.from('matches').select('*, student:student_id(*)').eq('teacher_id', profile.id)
     setRequests((data as MatchWithStudent[]) ?? [])
   }, [profile])
 
